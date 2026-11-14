@@ -1,8 +1,8 @@
 package com.credivoice.alertreader
 
-import android.os.Bundle
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.media.AudioAttributes
 import android.speech.tts.TextToSpeech
 import java.util.Locale
 import java.util.regex.Pattern
@@ -19,8 +19,16 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
 
     override fun onInit(status: Int) {
         if (status != TextToSpeech.SUCCESS) return
+        val engine = tts ?: return
+        engine.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        )
+        val languageResult = engine.setLanguage(Locale("en", "IN"))
+        if (languageResult < TextToSpeech.LANG_AVAILABLE) return
         ttsReady = true
-        tts?.language = Locale.getDefault()
         pendingSpeech.toList().forEach(::speakNow)
         pendingSpeech.clear()
     }
@@ -45,7 +53,7 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
         val now = System.currentTimeMillis()
         if (AlertData.isDuplicate(this, sender, text, now)) return
         val amount = extractAmount(message).orEmpty()
-        val speakNow = !AlertData.withinQuietHours(this)
+        val speakNow = true
         val speech = if (amount.isNotBlank()) "Credit alert. $amount credited. From $sender."
             else "A credit alert was received from $sender."
         AlertData.addEvent(this, CreditEvent(now, amount, sender, speakNow))
@@ -55,8 +63,7 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
     private fun speak(text: String) { if (ttsReady) speakNow(text) else pendingSpeech.add(text) }
 
     private fun speakNow(text: String) {
-        val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, AlertData.volume(this@CreditNotificationListener) / 100f) }
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, params, "credit-alert-${System.currentTimeMillis()}")
+        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, "credit-alert-${System.currentTimeMillis()}")
     }
 
     override fun onDestroy() { tts?.stop(); tts?.shutdown(); tts = null; super.onDestroy() }
