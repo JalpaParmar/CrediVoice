@@ -78,7 +78,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             setTypeface(null, Typeface.BOLD)
         }, LinearLayout.LayoutParams(0, dp(48), 1f))
-        val alertSwitch = accentSwitch(AlertData.enabled(this), Color.WHITE, coral) { checked ->
+        val alertSwitch = accentSwitch(AlertData.enabled(this), coral, Color.WHITE) { checked ->
             AlertData.setEnabled(this, checked)
             renderHome()
         }
@@ -284,8 +284,7 @@ class MainActivity : Activity() {
         val holder = FrameLayout(this)
         val availableWidth = resources.displayMetrics.widthPixels - dp(32)
         val contentWidth = minOf(dp(560), availableWidth).coerceAtLeast(dp(280))
-        val centered = LinearLayout.LayoutParams(contentWidth, -2).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        val centered = FrameLayout.LayoutParams(contentWidth, -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
         }
         val wrapper = FrameLayout(this).apply {
             addView(content, centered)
