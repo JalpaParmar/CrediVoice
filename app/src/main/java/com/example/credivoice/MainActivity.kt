@@ -473,6 +473,15 @@ class MainActivity : Activity() {
         if (testTts == null) {
             testTts = TextToSpeech(this) { status -> onActivityTtsInitialized(status) }
         } else if (activityTtsInitialized) {
+            if (!activityTtsReady) {
+                if (configureIndianEnglish(testTts)) {
+                    activityTtsReady = true
+                } else {
+                    pendingActivitySpeech = null
+                    showIndianEnglishUnavailable()
+                    return
+                }
+            }
             speakPendingActivitySpeech()
         }
     }
@@ -486,21 +495,25 @@ class MainActivity : Activity() {
         }
         if (!configureIndianEnglish(testTts)) {
             pendingActivitySpeech = null
-            AlertDialog.Builder(this)
-                .setTitle("English (India) voice unavailable")
-                .setMessage("Install the English (India) voice in your device text-to-speech settings, then try again.")
-                .setNegativeButton("Close", null)
-                .setPositiveButton("Voice settings") { _, _ ->
-                    try {
-                        startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
-                    } catch (_: Exception) {
-                        Toast.makeText(this, "Open Settings and search for Text-to-speech.", Toast.LENGTH_LONG).show()
-                    }
-                }.show()
+            showIndianEnglishUnavailable()
             return
         }
         activityTtsReady = true
         speakPendingActivitySpeech()
+    }
+
+    private fun showIndianEnglishUnavailable() {
+        AlertDialog.Builder(this)
+            .setTitle("English (India) voice unavailable")
+            .setMessage("Install the English (India) voice in your device text-to-speech settings, then try again.")
+            .setNegativeButton("Close", null)
+            .setPositiveButton("Voice settings") { _, _ ->
+                try {
+                    startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "Open Settings and search for Text-to-speech.", Toast.LENGTH_LONG).show()
+                }
+            }.show()
     }
 
     private fun configureIndianEnglish(engine: TextToSpeech?): Boolean {
@@ -516,12 +529,7 @@ class MainActivity : Activity() {
     }
 
     private fun speakPendingActivitySpeech() {
-        if (!activityTtsReady) {
-            if (activityTtsInitialized && !configureIndianEnglish(testTts)) {
-                onActivityTtsInitialized(TextToSpeech.ERROR)
-            }
-            return
-        }
+        if (!activityTtsReady) return
         val pending = pendingActivitySpeech ?: return
         pendingActivitySpeech = null
         testTts?.speak(pending.first, TextToSpeech.QUEUE_FLUSH, null, pending.second)
