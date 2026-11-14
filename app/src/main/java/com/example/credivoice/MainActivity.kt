@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.app.TimePickerDialog
 import android.content.ComponentName
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -14,7 +15,7 @@ import android.provider.Settings
 import android.speech.tts.TextToSpeech
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.SeekBar
@@ -23,119 +24,453 @@ import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
-    private val green = Color.rgb(7, 134, 95)
-    private val navy = Color.rgb(20, 35, 58)
-    private val muted = Color.rgb(94, 105, 119)
-    private val cream = Color.rgb(248, 246, 242)
-    private val cardColor = Color.WHITE
+    private val coral = Color.rgb(255, 56, 92)
+    private val ink = Color.rgb(34, 34, 34)
+    private val secondary = Color.rgb(113, 113, 113)
+    private val pageColor = Color.rgb(255, 249, 247)
+    private val blush = Color.rgb(255, 237, 239)
+    private val border = Color.rgb(238, 235, 233)
     private var testTts: TextToSpeech? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.statusBarColor = cream
-        window.navigationBarColor = cream
-        if (Build.VERSION.SDK_INT >= 26) window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        window.statusBarColor = pageColor
+        window.navigationBarColor = Color.WHITE
+        if (Build.VERSION.SDK_INT >= 26) {
+            window.decorView.systemUiVisibility =
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        }
         renderHome()
     }
 
-    override fun onResume() { super.onResume(); renderHome() }
+    override fun onResume() {
+        super.onResume()
+        renderHome()
+    }
 
     private fun renderHome() {
-        val root = page()
-        root.addView(header())
+        val content = pageColumn()
+        content.addView(brandHeader())
+        content.addView(heading("Money updates,\nspoken clearly", "A little more peace of mind, wherever you are."))
         val accessOkay = notificationAccessGranted()
+
         if (!accessOkay) {
             val setup = card()
-            setup.addView(title("Allow notification access"))
-            setup.addView(label("Android grants access to notification content across apps. CrediVoice filters likely credit alerts on this device and does not upload or save full message text."))
-            setup.addView(actionButton("Grant notification access") { openNotificationAccessSettings() })
-            root.addView(setup)
+            setup.addView(sectionTitle("One quick setup"))
+            setup.addView(body("Allow notification access so CrediVoice can find credit alerts. Matching happens on this device."))
+            setup.addView(textAction("Allow notification access  →") { openNotificationAccessSettings() })
+            content.addView(setup, sectionParams())
         }
 
-        val main = card()
-        val top = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        top.addView(title("Read aloud"), LinearLayout.LayoutParams(0, -2, 1f))
-        val master = Switch(this).apply { isChecked = AlertData.enabled(this@MainActivity); setOnCheckedChangeListener { _, checked -> AlertData.setEnabled(this@MainActivity, checked); renderHome() } }
-        top.addView(master)
-        main.addView(top)
-        main.addView(label(if (AlertData.enabled(this)) "Listening for credit alerts" else "Paused — alerts will not be read or saved"))
-        main.addView(label("Notification access: ${if (accessOkay) "Allowed" else "Required"}").apply { setTextColor(if (accessOkay) green else muted) })
-        if (!accessOkay) main.addView(actionButton("Open access settings") { openNotificationAccessSettings() })
-        main.addView(actionButton("Test voice") { speakTest() })
-        root.addView(main)
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+            background = rounded(coral, 24)
+        }
+        val heroTop = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        heroTop.addView(TextView(this).apply {
+            text = "VOICE ALERTS"
+            textSize = 13f
+            letterSpacing = 0.08f
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+        }, LinearLayout.LayoutParams(0, dp(48), 1f))
+        val alertSwitch = accentSwitch(AlertData.enabled(this), Color.WHITE, coral) { checked ->
+            AlertData.setEnabled(this, checked)
+            renderHome()
+        }
+        heroTop.addView(alertSwitch)
+        hero.addView(heroTop)
+        hero.addView(TextView(this).apply {
+            text = if (AlertData.enabled(this@MainActivity)) "Listening for credit alerts" else "Voice alerts are paused"
+            textSize = 18f
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, dp(4), 0, dp(5))
+        })
+        hero.addView(TextView(this).apply {
+            text = if (accessOkay) "Only matching notifications are read aloud" else "Allow notification access to get started"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            alpha = 0.92f
+        })
+        content.addView(hero, sectionParams())
 
         val quiet = card()
-        val quietTop = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        quietTop.addView(title("Quiet hours"), LinearLayout.LayoutParams(0, -2, 1f))
-        quietTop.addView(Switch(this).apply {
-            isChecked = AlertData.quietEnabled(this@MainActivity)
-            setOnCheckedChangeListener { _, checked -> AlertData.setQuietEnabled(this@MainActivity, checked); renderHome() }
+        val quietRow = horizontalRow()
+        quietRow.addView(sectionTitle("Quiet hours"), LinearLayout.LayoutParams(0, -2, 1f))
+        quietRow.addView(accentSwitch(AlertData.quietEnabled(this), coral, blush) { checked ->
+            AlertData.setQuietEnabled(this, checked)
+            renderHome()
         })
-        quiet.addView(quietTop)
-        quiet.addView(label("${formatMinutes(AlertData.quietStart(this))} – ${formatMinutes(AlertData.quietEnd(this))}"))
-        quiet.addView(label("Speaking pauses during these hours."))
-        quiet.addView(actionButton("Change schedule") { chooseQuietStart() })
-        root.addView(quiet)
+        quiet.addView(quietRow)
+        quiet.addView(TextView(this).apply {
+            text = "${formatMinutes(AlertData.quietStart(this@MainActivity))} – ${formatMinutes(AlertData.quietEnd(this@MainActivity))}"
+            textSize = 18f
+            setTextColor(ink)
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, dp(5), 0, dp(2))
+        })
+        quiet.addView(body("Speaking pauses during these hours."))
+        quiet.addView(textAction("Change schedule  →") { chooseQuietStart() })
+        content.addView(quiet, sectionParams())
 
         val bank = card()
-        bank.addView(title("Banks to monitor"))
-        val chosen = AlertData.selectedSenders(this)
-        bank.addView(label(if (chosen.isEmpty()) "All detected banks" else "${chosen.size} sender${if (chosen.size == 1) "" else "s"} selected"))
-        bank.addView(label("${AlertData.discoveredSenders(this).size} bank sender(s) detected so far"))
-        bank.addView(actionButton("Choose banks") { chooseBanks() })
-        root.addView(bank)
+        val bankRow = horizontalRow()
+        bankRow.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("Banks monitored"))
+            val chosen = AlertData.selectedSenders(this@MainActivity)
+            val discovered = AlertData.discoveredSenders(this@MainActivity).sorted()
+            addView(body(when {
+                chosen.isNotEmpty() -> "${chosen.size} sender${if (chosen.size == 1) "" else "s"} selected"
+                discovered.isNotEmpty() -> "${discovered.size} sender${if (discovered.size == 1) "" else "s"} detected"
+                else -> "All matching senders"
+            }))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        bankRow.addView(textAction("Manage  →") { chooseBanks() })
+        bank.addView(bankRow)
+        val senders = AlertData.selectedSenders(this).ifEmpty { AlertData.discoveredSenders(this).sorted().take(3).toSet() }
+        if (senders.isNotEmpty()) {
+            val chips = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(9), 0, 0)
+            }
+            senders.take(3).forEach { sender ->
+                val chip = TextView(this).apply {
+                    text = sender
+                    textSize = 13f
+                    setTextColor(ink)
+                    setTypeface(null, Typeface.BOLD)
+                    setPadding(dp(13), dp(8), dp(13), dp(8))
+                    background = rounded(blush, 14)
+                }
+                val lp = LinearLayout.LayoutParams(-2, -2)
+                lp.marginEnd = dp(8)
+                chips.addView(chip, lp)
+            }
+            bank.addView(chips)
+        }
+        content.addView(bank, sectionParams())
 
         val audio = card()
-        audio.addView(title("Speech volume"))
-        val volumeLine = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        volumeLine.addView(label("Low"))
-        val slider = SeekBar(this).apply { max = 100; progress = AlertData.volume(this@MainActivity) }
-        volumeLine.addView(slider, LinearLayout.LayoutParams(0, -2, 1f))
-        val percent = label("${AlertData.volume(this)}%")
-        volumeLine.addView(percent)
+        audio.addView(sectionTitle("Speech volume"))
+        val volumeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        volumeRow.addView(TextView(this).apply {
+            text = "◖))"
+            textSize = 17f
+            setTextColor(ink)
+            contentDescription = "Speaker"
+        })
+        val slider = SeekBar(this).apply {
+            max = 100
+            progress = AlertData.volume(this@MainActivity)
+            progressTintList = ColorStateList.valueOf(coral)
+            thumbTintList = ColorStateList.valueOf(coral)
+            if (Build.VERSION.SDK_INT >= 21) progressBackgroundTintList = ColorStateList.valueOf(border)
+        }
+        volumeRow.addView(slider, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+            marginStart = dp(12)
+            marginEnd = dp(8)
+        })
+        val percent = TextView(this).apply {
+            text = "${AlertData.volume(this@MainActivity)}%"
+            textSize = 13f
+            setTextColor(secondary)
+            minWidth = dp(38)
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        }
+        volumeRow.addView(percent)
         slider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) { percent.text = "$progress%"; if (fromUser) AlertData.setVolume(this@MainActivity, progress) }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) { }
-            override fun onStopTrackingTouch(seekBar: SeekBar?) { }
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                percent.text = "$progress%"
+                if (fromUser) AlertData.setVolume(this@MainActivity, progress)
+            }
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
-        audio.addView(volumeLine)
-        audio.addView(label("This adjusts spoken alert volume. Device volume still applies."))
-        root.addView(audio)
+        audio.addView(volumeRow)
+        audio.addView(body("Adjust spoken alerts. Your phone’s media volume still applies."))
+        content.addView(audio, sectionParams())
 
-        val historyButton = actionButton("View credit history") { renderHistory() }
-        root.addView(historyButton)
-        root.addView(label("Matching bank alert notifications are checked on this device. Only short summaries are saved, not full message text.").apply {
-            gravity = Gravity.CENTER; setPadding(10, 12, 10, 12); setTextColor(muted)
+        content.addView(filledAction("▶    Test voice") { speakTest() }, sectionParams())
+        content.addView(TextView(this).apply {
+            text = "Your alert summaries stay on this device. Full message text is not saved."
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(secondary)
+            setPadding(dp(8), dp(4), dp(8), dp(12))
         })
-        setContentView(ScrollView(this).apply { addView(root) })
+        showScreen(content, "home")
     }
 
     private fun renderHistory() {
-        val root = page()
-        root.addView(header("Credit history", "Recent credit alerts detected by CrediVoice"))
-        root.addView(actionButton("← Back") { renderHome() })
+        val content = pageColumn()
+        content.addView(brandHeader())
+        content.addView(heading("Credit history", "Your recent updates"))
         val events = AlertData.history(this)
         if (events.isEmpty()) {
             val empty = card()
-            empty.addView(title("No alerts yet"))
-            empty.addView(label("Detected credit alerts will appear here when bank or SMS apps post matching notifications."))
-            root.addView(empty)
+            empty.addView(sectionTitle("No alerts yet"))
+            empty.addView(body("Matching credit alerts will appear here after a bank or messaging app posts a notification."))
+            content.addView(empty, sectionParams())
         } else {
             events.forEach { event ->
                 val item = card()
-                item.addView(title(event.amount.ifBlank { "Credit alert" }))
-                item.addView(label("${event.sender}  •  ${AlertData.formatDate(event.time)}"))
-                item.addView(label(if (event.spoken) "Spoken aloud" else "Detected during quiet hours"))
-                root.addView(item)
+                val row = horizontalRow()
+                val marker = TextView(this).apply {
+                    text = "↙"
+                    textSize = 22f
+                    gravity = Gravity.CENTER
+                    setTextColor(coral)
+                    background = rounded(blush, 50)
+                }
+                row.addView(marker, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
+                val details = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+                details.addView(TextView(this).apply {
+                    text = event.sender.ifBlank { "Credit alert" }
+                    textSize = 16f
+                    setTextColor(ink)
+                    setTypeface(null, Typeface.BOLD)
+                })
+                details.addView(body(AlertData.formatDate(event.time)))
+                details.addView(body(if (event.spoken) "Spoken aloud" else "Detected during quiet hours"))
+                row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
+                row.addView(TextView(this).apply {
+                    text = event.amount.ifBlank { "Credited" }
+                    textSize = 16f
+                    setTextColor(ink)
+                    setTypeface(null, Typeface.BOLD)
+                    gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                })
+                item.addView(row)
+                content.addView(item, sectionParams())
             }
-            root.addView(actionButton("Clear history") {
-                AlertDialog.Builder(this).setTitle("Clear history?").setMessage("This removes the saved alert summaries from this device.")
-                    .setNegativeButton("Cancel", null).setPositiveButton("Clear") { _, _ -> AlertData.clearHistory(this); renderHistory() }.show()
+            content.addView(textAction("Clear history") {
+                AlertDialog.Builder(this)
+                    .setTitle("Clear history?")
+                    .setMessage("This removes the saved alert summaries from this device.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Clear") { _, _ ->
+                        AlertData.clearHistory(this)
+                        renderHistory()
+                    }.show()
             })
         }
-        root.addView(label("History is stored only on this device. Up to 100 summaries are kept; full SMS messages are not saved.").apply { setPadding(12, 8, 12, 20); setTextColor(muted) })
-        setContentView(ScrollView(this).apply { addView(root) })
+        content.addView(TextView(this).apply {
+            text = "History is stored only on this device. Up to 100 short summaries are kept."
+            textSize = 12f
+            setTextColor(secondary)
+            setPadding(0, dp(16), 0, dp(20))
+        })
+        showScreen(content, "history")
     }
+
+    private fun showScreen(content: LinearLayout, selected: String) {
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(pageColor)
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_NEVER
+        }
+        val holder = FrameLayout(this)
+        val availableWidth = resources.displayMetrics.widthPixels - dp(32)
+        val contentWidth = minOf(dp(560), availableWidth).coerceAtLeast(dp(280))
+        val centered = LinearLayout.LayoutParams(contentWidth, -2).apply {
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        }
+        val wrapper = FrameLayout(this).apply {
+            addView(content, centered)
+        }
+        scroll.addView(wrapper, ScrollView.LayoutParams(-1, -2))
+        shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        shell.addView(bottomNavigation(selected), LinearLayout.LayoutParams(-1, dp(72)))
+        setContentView(shell)
+    }
+
+    private fun bottomNavigation(selected: String): View {
+        val nav = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            background = GradientDrawable().apply {
+                setColor(Color.WHITE)
+                setStroke(dp(1), border)
+            }
+        }
+        fun item(label: String, glyph: String, tab: String, action: () -> Unit): View {
+            val active = selected == tab
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = true
+                setOnClickListener { action() }
+                val icon = TextView(this@MainActivity).apply {
+                    text = glyph
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    setTextColor(if (active) coral else secondary)
+                }
+                addView(icon)
+                addView(TextView(this@MainActivity).apply {
+                    text = label
+                    textSize = 12f
+                    setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
+                    gravity = Gravity.CENTER
+                    setTextColor(if (active) coral else secondary)
+                })
+            }
+        }
+        nav.addView(item("Home", "⌂", "home") { renderHome() }, LinearLayout.LayoutParams(0, -1, 1f))
+        nav.addView(item("History", "▤", "history") { renderHistory() }, LinearLayout.LayoutParams(0, -1, 1f))
+        return nav
+    }
+
+    private fun pageColumn() = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(24), dp(12), dp(24), dp(20))
+    }
+
+    private fun brandHeader(): View {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(10), 0, dp(19))
+        }
+        val mark = TextView(this).apply {
+            text = "C"
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setTypeface(null, Typeface.BOLD)
+            background = rounded(coral, 14)
+        }
+        row.addView(mark, LinearLayout.LayoutParams(dp(34), dp(34)).apply { marginEnd = dp(10) })
+        row.addView(TextView(this).apply {
+            text = "CrediVoice"
+            textSize = 21f
+            setTextColor(ink)
+            setTypeface(null, Typeface.BOLD)
+        })
+        return row
+    }
+
+    private fun heading(titleText: String, subtitle: String): View {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(20))
+        }
+        box.addView(TextView(this).apply {
+            text = titleText
+            textSize = 30f
+            setTextColor(ink)
+            setTypeface(null, Typeface.BOLD)
+            setLineSpacing(0f, 1.02f)
+        })
+        box.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 15f
+            setTextColor(secondary)
+            setPadding(0, dp(7), 0, 0)
+        })
+        return box
+    }
+
+    private fun card(): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(18), dp(17), dp(18), dp(17))
+        background = GradientDrawable().apply {
+            setColor(Color.WHITE)
+            cornerRadius = dp(20).toFloat()
+            setStroke(dp(1), border)
+        }
+    }
+
+    private fun sectionTitle(text: String) = TextView(this).apply {
+        this.text = text
+        textSize = 17f
+        setTextColor(ink)
+        setTypeface(null, Typeface.BOLD)
+    }
+
+    private fun body(text: String) = TextView(this).apply {
+        this.text = text
+        textSize = 14f
+        setTextColor(secondary)
+        setPadding(0, dp(4), 0, dp(2))
+    }
+
+    private fun horizontalRow() = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+    }
+
+    private fun accentSwitch(
+        checked: Boolean,
+        checkedThumb: Int,
+        checkedTrack: Int,
+        action: (Boolean) -> Unit
+    ) = Switch(this).apply {
+        isChecked = checked
+        showText = false
+        if (Build.VERSION.SDK_INT >= 21) {
+            thumbTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(checkedThumb, Color.WHITE)
+            )
+            trackTintList = ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(checkedTrack, Color.rgb(205, 205, 205))
+            )
+        }
+        setOnCheckedChangeListener { _, isOn -> action(isOn) }
+    }
+
+    private fun textAction(text: String, action: () -> Unit) = TextView(this).apply {
+        this.text = text
+        textSize = 14f
+        setTextColor(coral)
+        setTypeface(null, Typeface.BOLD)
+        gravity = Gravity.CENTER_VERTICAL
+        minHeight = dp(44)
+        setPadding(dp(10), dp(8), dp(10), dp(8))
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { action() }
+    }
+
+    private fun filledAction(text: String, action: () -> Unit) = TextView(this).apply {
+        this.text = text
+        textSize = 16f
+        setTextColor(Color.WHITE)
+        setTypeface(null, Typeface.BOLD)
+        gravity = Gravity.CENTER
+        minHeight = dp(54)
+        background = rounded(coral, 18)
+        isClickable = true
+        isFocusable = true
+        setOnClickListener { action() }
+    }
+
+    private fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radiusDp).toFloat()
+    }
+
+    private fun sectionParams() = LinearLayout.LayoutParams(-1, -2).apply {
+        bottomMargin = dp(12)
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private fun chooseBanks() {
         val senders = AlertData.discoveredSenders(this).sorted()
@@ -186,11 +521,23 @@ class MainActivity : Activity() {
     }
 
     private fun speakTestNow() {
-        val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, AlertData.volume(this@MainActivity) / 100f) }
-        testTts?.speak("CrediVoice is ready to read bank credit alerts aloud.", TextToSpeech.QUEUE_FLUSH, params, "test-voice")
+        val params = Bundle().apply {
+            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, AlertData.volume(this@MainActivity) / 100f)
+        }
+        testTts?.speak(
+            "CrediVoice is ready to read bank credit alerts aloud.",
+            TextToSpeech.QUEUE_FLUSH,
+            params,
+            "test-voice"
+        )
     }
 
-    override fun onDestroy() { testTts?.stop(); testTts?.shutdown(); testTts = null; super.onDestroy() }
+    override fun onDestroy() {
+        testTts?.stop()
+        testTts?.shutdown()
+        testTts = null
+        super.onDestroy()
+    }
 
     private fun notificationAccessGranted(): Boolean {
         val enabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: return false
@@ -199,42 +546,18 @@ class MainActivity : Activity() {
     }
 
     private fun openNotificationAccessSettings() {
-        try { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-        catch (_: Exception) { Toast.makeText(this, "Open Android Settings and search for Notification access.", Toast.LENGTH_LONG).show() }
+        try {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        } catch (_: Exception) {
+            Toast.makeText(this, "Open Android Settings and search for Notification access.", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun formatMinutes(value: Int): String {
-        val h = value / 60; val m = value % 60
-        val suffix = if (h < 12) "AM" else "PM"
-        val display = when (h % 12) { 0 -> 12; else -> h % 12 }
-        return "%d:%02d %s".format(display, m, suffix)
-    }
-
-    private fun page(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setPadding(20, 12, 20, 20); setBackgroundColor(cream)
-    }
-
-    private fun header(titleText: String = "CrediVoice", subtitle: String = "Bank alerts, spoken clearly"): View {
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(4, 18, 4, 18) }
-        box.addView(TextView(this).apply { text = "◖  $titleText"; textSize = 28f; setTextColor(navy); setTypeface(null, Typeface.BOLD) })
-        box.addView(label(subtitle))
-        return box
-    }
-
-    private fun card(): LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL; setPadding(18, 16, 18, 16)
-        background = GradientDrawable().apply { setColor(cardColor); cornerRadius = 22f }
-        elevation = 2f
-        val params = LinearLayout.LayoutParams(-1, -2); params.setMargins(0, 0, 0, 14); layoutParams = params
-    }
-
-    private fun title(text: String) = TextView(this).apply {
-        this.text = text; textSize = 20f; setTextColor(navy); setTypeface(null, Typeface.BOLD); setPadding(0, 0, 0, 8)
-    }
-
-    private fun label(text: String) = TextView(this).apply { this.text = text; textSize = 15f; setTextColor(muted); setPadding(0, 3, 0, 5) }
-
-    private fun actionButton(text: String, action: () -> Unit) = Button(this).apply {
-        this.text = text; setTextColor(green); setOnClickListener { action() }
+        val hour = value / 60
+        val minute = value % 60
+        val suffix = if (hour < 12) "AM" else "PM"
+        val displayHour = when (hour % 12) { 0 -> 12; else -> hour % 12 }
+        return "%d:%02d %s".format(displayHour, minute, suffix)
     }
 }
