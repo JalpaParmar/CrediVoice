@@ -16,12 +16,6 @@ object AlertData {
 
     fun enabled(context: Context) = prefs(context).getBoolean("enabled", true)
     fun setEnabled(context: Context, value: Boolean) = prefs(context).edit().putBoolean("enabled", value).apply()
-    fun quietEnabled(context: Context) = prefs(context).getBoolean("quiet", true)
-    fun setQuietEnabled(context: Context, value: Boolean) = prefs(context).edit().putBoolean("quiet", value).apply()
-    fun quietStart(context: Context) = prefs(context).getInt("quietStart", 22 * 60)
-    fun quietEnd(context: Context) = prefs(context).getInt("quietEnd", 7 * 60)
-    fun volume(context: Context) = prefs(context).getInt("volume", 75)
-    fun setVolume(context: Context, value: Int) = prefs(context).edit().putInt("volume", value).apply()
     fun selectedSenders(context: Context): Set<String> = prefs(context).getStringSet("senders", emptySet())?.toSet() ?: emptySet()
     fun setSelectedSenders(context: Context, value: Set<String>) = prefs(context).edit().putStringSet("senders", value).apply()
     fun discoveredSenders(context: Context): Set<String> = prefs(context).getStringSet("discovered", emptySet())?.toSet() ?: emptySet()
@@ -41,15 +35,6 @@ object AlertData {
         val duplicate = previous == fingerprint && now - previousTime in 0..15_000
         if (!duplicate) p.edit().putString("lastFingerprint", fingerprint).putLong("lastFingerprintAt", now).apply()
         return duplicate
-    }
-
-    fun withinQuietHours(context: Context): Boolean {
-        if (!quietEnabled(context)) return false
-        val now = java.util.Calendar.getInstance()
-        val minute = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE)
-        val start = quietStart(context)
-        val end = quietEnd(context)
-        return if (start <= end) minute in start until end else minute >= start || minute < end
     }
 
     fun addEvent(context: Context, event: CreditEvent) {
