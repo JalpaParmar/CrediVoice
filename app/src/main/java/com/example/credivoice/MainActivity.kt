@@ -9,6 +9,7 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.media.AudioAttributes
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -18,7 +19,6 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -31,6 +31,9 @@ class MainActivity : Activity() {
     private val blush = Color.rgb(255, 237, 239)
     private val border = Color.rgb(238, 235, 233)
     private var testTts: TextToSpeech? = null
+    private var activityTtsInitialized = false
+    private var activityTtsReady = false
+    private var pendingActivitySpeech: Pair<String, String>? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,25 +102,6 @@ class MainActivity : Activity() {
         })
         content.addView(hero, sectionParams())
 
-        val quiet = card()
-        val quietRow = horizontalRow()
-        quietRow.addView(sectionTitle("Quiet hours"), LinearLayout.LayoutParams(0, -2, 1f))
-        quietRow.addView(accentSwitch(AlertData.quietEnabled(this), coral, blush) { checked ->
-            AlertData.setQuietEnabled(this, checked)
-            renderHome()
-        })
-        quiet.addView(quietRow)
-        quiet.addView(TextView(this).apply {
-            text = "${formatMinutes(AlertData.quietStart(this@MainActivity))} – ${formatMinutes(AlertData.quietEnd(this@MainActivity))}"
-            textSize = 18f
-            setTextColor(ink)
-            setTypeface(null, Typeface.BOLD)
-            setPadding(0, dp(5), 0, dp(2))
-        })
-        quiet.addView(body("Speaking pauses during these hours."))
-        quiet.addView(textAction("Change schedule  →") { chooseQuietStart() })
-        content.addView(quiet, sectionParams())
-
         val bank = card()
         val bankRow = horizontalRow()
         bankRow.addView(LinearLayout(this).apply {
@@ -156,48 +140,17 @@ class MainActivity : Activity() {
         }
         content.addView(bank, sectionParams())
 
-        val audio = card()
-        audio.addView(sectionTitle("Speech volume"))
-        val volumeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        volumeRow.addView(TextView(this).apply {
-            text = "◖))"
-            textSize = 17f
+        val voice = card()
+        voice.addView(sectionTitle("Voice language"))
+        voice.addView(TextView(this).apply {
+            text = "English (India)"
+            textSize = 16f
             setTextColor(ink)
-            contentDescription = "Speaker"
+            setTypeface(null, Typeface.BOLD)
+            setPadding(0, dp(7), 0, dp(2))
         })
-        val slider = SeekBar(this).apply {
-            max = 100
-            progress = AlertData.volume(this@MainActivity)
-            progressTintList = ColorStateList.valueOf(coral)
-            thumbTintList = ColorStateList.valueOf(coral)
-            if (Build.VERSION.SDK_INT >= 21) progressBackgroundTintList = ColorStateList.valueOf(border)
-        }
-        volumeRow.addView(slider, LinearLayout.LayoutParams(0, dp(42), 1f).apply {
-            marginStart = dp(12)
-            marginEnd = dp(8)
-        })
-        val percent = TextView(this).apply {
-            text = "${AlertData.volume(this@MainActivity)}%"
-            textSize = 13f
-            setTextColor(secondary)
-            minWidth = dp(38)
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-        }
-        volumeRow.addView(percent)
-        slider.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                percent.text = "$progress%"
-                if (fromUser) AlertData.setVolume(this@MainActivity, progress)
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-        audio.addView(volumeRow)
-        audio.addView(body("Adjust spoken alerts. Your phone’s media volume still applies."))
-        content.addView(audio, sectionParams())
+        voice.addView(body("Spoken alerts use your phone’s media volume."))
+        content.addView(voice, sectionParams())
 
         content.addView(filledAction("▶    Test voice") { speakTest() }, sectionParams())
         content.addView(TextView(this).apply {
@@ -250,6 +203,9 @@ class MainActivity : Activity() {
                     gravity = Gravity.END or Gravity.CENTER_VERTICAL
                 })
                 item.addView(row)
+                item.isClickable = true
+                item.isFocusable = true
+                item.setOnClickListener { speakHistoryEvent(event) }
                 content.addView(item, sectionParams())
             }
             content.addView(textAction("Clear history") {
@@ -495,40 +451,80 @@ class MainActivity : Activity() {
             }.show()
     }
 
-    private fun chooseQuietStart() {
-        val start = AlertData.quietStart(this)
-        TimePickerDialog(this, { _, hour, minute ->
-            val startValue = hour * 60 + minute
-            getSharedPreferences("credivoice", MODE_PRIVATE).edit().putInt("quietStart", startValue).apply()
-            val end = AlertData.quietEnd(this)
-            TimePickerDialog(this, { _, endHour, endMinute ->
-                getSharedPreferences("credivoice", MODE_PRIVATE).edit().putInt("quietEnd", endHour * 60 + endMinute).apply()
-                renderHome()
-            }, end / 60, end % 60, false).show()
-        }, start / 60, start % 60, false).show()
-    }
-
     private fun speakTest() {
-        if (testTts == null) {
-            testTts = TextToSpeech(this) { status ->
-                if (status == TextToSpeech.SUCCESS) {
-                    testTts?.language = java.util.Locale.getDefault()
-                    speakTestNow()
-                } else Toast.makeText(this, "Check your device text-to-speech settings.", Toast.LENGTH_LONG).show()
-            }
-        } else speakTestNow()
-    }
-
-    private fun speakTestNow() {
-        val params = Bundle().apply {
-            putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, AlertData.volume(this@MainActivity) / 100f)
-        }
-        testTts?.speak(
-            "CrediVoice is ready to read bank credit alerts aloud.",
-            TextToSpeech.QUEUE_FLUSH,
-            params,
+        speakWithPhoneVolume(
+            "CrediVoice is ready. This is an Indian English voice sample.",
             "test-voice"
         )
+    }
+
+    private fun speakHistoryEvent(event: CreditEvent) {
+        val spokenAmount = event.amount
+        val message = if (spokenAmount.isBlank()) {
+            "Credit alert from ${event.sender}."
+        } else {
+            "Credit alert. ${spokenAmount} credited by ${event.sender}."
+        }
+        speakWithPhoneVolume(message, "history-${event.time}")
+    }
+
+    private fun speakWithPhoneVolume(text: String, utteranceId: String) {
+        pendingActivitySpeech = text to utteranceId
+        if (testTts == null) {
+            testTts = TextToSpeech(this) { status -> onActivityTtsInitialized(status) }
+        } else if (activityTtsInitialized) {
+            speakPendingActivitySpeech()
+        }
+    }
+
+    private fun onActivityTtsInitialized(status: Int) {
+        activityTtsInitialized = true
+        if (status != TextToSpeech.SUCCESS) {
+            pendingActivitySpeech = null
+            Toast.makeText(this, "Check your device text-to-speech settings.", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!configureIndianEnglish(testTts)) {
+            pendingActivitySpeech = null
+            AlertDialog.Builder(this)
+                .setTitle("English (India) voice unavailable")
+                .setMessage("Install the English (India) voice in your device text-to-speech settings, then try again.")
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Voice settings") { _, _ ->
+                    try {
+                        startActivity(Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA))
+                    } catch (_: Exception) {
+                        Toast.makeText(this, "Open Settings and search for Text-to-speech.", Toast.LENGTH_LONG).show()
+                    }
+                }.show()
+            return
+        }
+        activityTtsReady = true
+        speakPendingActivitySpeech()
+    }
+
+    private fun configureIndianEnglish(engine: TextToSpeech?): Boolean {
+        if (engine == null) return false
+        engine.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        )
+        val languageResult = engine.setLanguage(java.util.Locale("en", "IN"))
+        return languageResult >= TextToSpeech.LANG_AVAILABLE
+    }
+
+    private fun speakPendingActivitySpeech() {
+        if (!activityTtsReady) {
+            if (activityTtsInitialized && !configureIndianEnglish(testTts)) {
+                onActivityTtsInitialized(TextToSpeech.ERROR)
+            }
+            return
+        }
+        val pending = pendingActivitySpeech ?: return
+        pendingActivitySpeech = null
+        testTts?.speak(pending.first, TextToSpeech.QUEUE_FLUSH, null, pending.second)
     }
 
     override fun onDestroy() {
