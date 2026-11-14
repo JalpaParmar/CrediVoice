@@ -289,7 +289,7 @@ class MainActivity : Activity() {
         val wrapper = FrameLayout(this).apply {
             addView(content, centered)
         }
-        scroll.addView(wrapper, ScrollView.LayoutParams(-1, -2))
+        scroll.addView(wrapper, android.view.ViewGroup.LayoutParams(-1, -2))
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         shell.addView(bottomNavigation(selected), LinearLayout.LayoutParams(-1, dp(72)))
         setContentView(shell)
