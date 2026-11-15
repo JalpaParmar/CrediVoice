@@ -192,8 +192,9 @@ class MainActivity : Activity() {
                     setTextColor(ink)
                     setTypeface(null, Typeface.BOLD)
                 })
-                details.addView(body(AlertData.formatDate(event.time)))
-                details.addView(body(if (event.spoken) "Spoken aloud" else "Detected during quiet hours"))
+                val directionLabel = if (event.direction.equals("debit", ignoreCase = true)) "Debit" else "Credit"
+                details.addView(body("$directionLabel  •  ${AlertData.formatDate(event.time)}"))
+                details.addView(body(if (event.spoken) "Spoken aloud" else "Not spoken"))
                 row.addView(details, LinearLayout.LayoutParams(0, -2, 1f))
                 row.addView(TextView(this).apply {
                     text = event.amount.ifBlank { "Credited" }
@@ -459,11 +460,11 @@ class MainActivity : Activity() {
     }
 
     private fun speakHistoryEvent(event: CreditEvent) {
-        val spokenAmount = event.amount
-        val message = if (spokenAmount.isBlank()) {
-            "Credit alert from ${event.sender}."
+        val verb = if (event.direction.equals("debit", ignoreCase = true)) "debited" else "credited"
+        val message = if (event.amount.isBlank()) {
+            "A transaction was $verb from ${event.sender}."
         } else {
-            "Credit alert. ${spokenAmount} credited by ${event.sender}."
+            "${event.amount} $verb from ${event.sender}."
         }
         speakWithPhoneVolume(message, "history-${event.time}")
     }
