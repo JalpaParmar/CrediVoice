@@ -106,25 +106,38 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
     }
 
     private fun notificationTextParts(extras: Bundle): List<String> {
-        val parts = mutableListOf<String>()
-        listOf(
+        // Prefer the notification preview, which represents the newest SMS. Some SMS apps
+        // include the entire unread conversation in EXTRA_TEXT_LINES or MessagingStyle.
+        val primaryText = sequenceOf(
             Notification.EXTRA_TEXT,
-            Notification.EXTRA_BIG_TEXT,
+            Notification.EXTRA_BIG_TEXT
+        ).mapNotNull { key ->
+            extras.getCharSequence(key)?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        }.firstOrNull()
+
+        if (primaryText != null) return listOf(primaryText)
+
+        val messages = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+            ?.mapNotNull { it as? Bundle }
+            .orEmpty()
+        if (messages.isNotEmpty()) {
+            val newest = messages.maxByOrNull { it.getLong("time", 0L) } ?: messages.last()
+            val text = newest.getCharSequence("text")?.toString()?.trim()
+            if (!text.isNullOrBlank()) return listOf(text)
+        }
+
+        val lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+            ?.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }
+            .orEmpty()
+        if (lines.isNotEmpty()) return listOf(lines.last())
+
+        return listOf(
             Notification.EXTRA_SUB_TEXT,
             Notification.EXTRA_SUMMARY_TEXT,
             Notification.EXTRA_INFO_TEXT
-        ).forEach { key ->
-            extras.getCharSequence(key)?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let(parts::add)
-        }
-        extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)?.forEach { line ->
-            line?.toString()?.trim()?.takeIf { it.isNotBlank() }?.let(parts::add)
-        }
-        extras.getParcelableArray(Notification.EXTRA_MESSAGES)?.forEach { message ->
-            val messageBundle = message as? Bundle ?: return@forEach
-            messageBundle.getCharSequence("text")?.toString()?.trim()
-                ?.takeIf { it.isNotBlank() }?.let(parts::add)
-        }
-        return parts.distinct()
+        ).mapNotNull { key ->
+            extras.getCharSequence(key)?.toString()?.trim()?.takeIf { it.isNotBlank() }
+        }.take(1)
     }
 
     private fun parseTransactions(message: String): List<ParsedTransaction> {
