@@ -11,6 +11,7 @@ import java.util.Locale
 class CreditNotificationListener : NotificationListenerService(), TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var listenerConnectedAtMillis = 0L
     private val pendingSpeech = mutableListOf<Pair<String, String>>()
 
     private data class DirectionMark(
@@ -43,6 +44,7 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        listenerConnectedAtMillis = System.currentTimeMillis()
         if (tts == null) tts = TextToSpeech(applicationContext, this)
     }
 
@@ -62,6 +64,8 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        // Ignore notifications that were already in the shade when access connected.
+        if (listenerConnectedAtMillis == 0L || sbn.postTime <= listenerConnectedAtMillis) return
         if (sbn.packageName == packageName || !AlertData.enabled(this)) return
         val extras = sbn.notification.extras ?: return
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim().orEmpty()
