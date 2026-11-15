@@ -7,7 +7,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-data class CreditEvent(val time: Long, val amount: String, val sender: String, val spoken: Boolean)
+data class CreditEvent(val time: Long, val amount: String, val sender: String, val spoken: Boolean, val direction: String = "credit")
 
 object AlertData {
     private const val PREFS = "credivoice"
@@ -42,7 +42,7 @@ object AlertData {
         all.add(0, event)
         val json = JSONArray()
         all.take(100).forEach { item ->
-            json.put(JSONObject().put("time", item.time).put("amount", item.amount).put("sender", item.sender).put("spoken", item.spoken))
+            json.put(JSONObject().put("time", item.time).put("amount", item.amount).put("sender", item.sender).put("spoken", item.spoken).put("direction", item.direction))
         }
         prefs(context).edit().putString(HISTORY, json.toString()).apply()
     }
@@ -53,7 +53,7 @@ object AlertData {
             val json = JSONArray(raw)
             (0 until json.length()).map { i ->
                 val o = json.getJSONObject(i)
-                CreditEvent(o.getLong("time"), o.getString("amount"), o.getString("sender"), o.getBoolean("spoken"))
+                CreditEvent(o.getLong("time"), o.getString("amount"), o.getString("sender"), o.getBoolean("spoken"), o.optString("direction", "credit"))
             }
         } catch (_: Exception) { emptyList() }
     }
