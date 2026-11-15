@@ -1,6 +1,7 @@
 package com.credivoice.alertreader
 
 import android.app.Notification
+import android.content.ComponentName
 import android.media.AudioAttributes
 import android.os.Bundle
 import android.service.notification.NotificationListenerService
@@ -46,6 +47,12 @@ class CreditNotificationListener : NotificationListenerService(), TextToSpeech.O
         super.onListenerConnected()
         listenerConnectedAtMillis = System.currentTimeMillis()
         if (tts == null) tts = TextToSpeech(applicationContext, this)
+    }
+
+    override fun onListenerDisconnected() {
+        super.onListenerDisconnected()
+        // Android may disconnect bound listeners temporarily; ask the system to reconnect.
+        requestRebind(ComponentName(this, CreditNotificationListener::class.java))
     }
 
     override fun onInit(status: Int) {
